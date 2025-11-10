@@ -1,20 +1,13 @@
-import React, { useState } from 'react'
-import { assets } from '../assets/assets'
+import React, { useContext, useState } from 'react'
+import { AppContext } from '../context/AppContext'
+import axios from 'axios'
+import { toast } from 'react-toastify'
+import { assets} from '../assets/assets'
 
 const MyProfile = () => {
 
-  const [userData, setUserData] = useState({
-    name: "Edward Vincent",
-    image: assets.profile_pic,
-    email: "edwardvincent@gmail.com",
-    phone: '+66 617736759',
-    address: {
-      line1: 'Srinakarin Road, Asakan Place',
-      line2: 'Suan Luang Subdistrict, Suan Luang District, Bangkok'
-    },
-    gender: 'Male',
-    dob: '2000-02-01'
-  })
+  
+  const { userData, setUserData, token, backendUrl, loadUserProfileData } = useContext(AppContext)
 
   const [isEdit, setIsEdit] = useState(false)
   const [preview, setPreview] = useState(null)
@@ -47,39 +40,95 @@ const MyProfile = () => {
     }
   }
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    console.log('Updated Info:', userData);
+  //remove photo (restore default photo)
+  const handleRemovePhoto = async () => {
+    try {
+      const { data } = await axios.delete(backendUrl + '/api/user/remove-photo', {
+      headers: { token }});
 
-    //example of sending image via FormData to API
-    const form = new FormData();
-    form.append('name', userData.name)
-    form.append('phone', userData.phone)
-    form.append('addressLine1', userData.address.line1)
-    form.append('addressLine2', userData.address.line2)
-    form.append('gender', userData.gender)
-    form.append('dob', userData.dob)
-    if(imageFile) form.append('image', imageFile)
-    
-    //Update image preview in user data
-    if (preview) {
-      setUserData((prev) => ({
-        ...prev, image: preview   // Update image shown on the profile
-      }))
+
+      if (data.success) {
+
+        // clear preview and imageFile
+        setPreview(null); 
+        setImagefile(null);
+        // restore to default image
+        setUserData((prev) => ({
+          ...prev,
+          image: assets.upload_area,
+        }))
+
+        // reload fresh user data from backend if needed
+        loadUserProfileData();
+      } else {
+        toast.error(data.message)
+      }
+    } catch (error) {
+      console.log(error)
+      toast.error(error.message);
     }
-
-    console.log('Updated info:', userData);
-    
-    
-    setIsEdit(false);
+   
   }
 
-  return (
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    try {
+      
+      const form = new FormData()
+      form.append('name', userData.name)
+      form.append('phone', userData.phone)
+      form.append('address',
+        JSON.stringify({
+          line1: userData.address.line1,
+          line2: userData.address.line2
+        }))
+      form.append('gender', userData.gender)
+      form.append('dob', userData.dob)
+      if (imageFile) form.append('image', imageFile);
+
+      //send request to backend API
+      const { data } = await axios.post(backendUrl + '/api/user/update-profile', form, { headers: { token } })
+
+      if (data.success) {
+        toast.success(data.message)
+        setIsEdit(false)
+
+        //reload updated user data from backend
+        loadUserProfileData();
+
+        //update image preview immdediately
+        if (preview) {
+          setUserData((prev) => ({
+            ...prev, image: preview,
+          }))
+        }
+      } else {
+        toast.error(data.message)
+      }
+
+    } catch (error) {
+      console.log(error)
+      toast.error(error.message);
+      
+    }
+  }
+
+  //user default image if userData.image is missing
+ const currentImage =
+  preview ||
+  (userData?.image && userData.image.trim() !== '' && userData.image !== 'undefined'
+    ? userData.image
+    : assets.upload_area);
+
+
+
+  return userData && (
     <div>
 
       <div className='my-10 flex flex-col md:flex-row gap-12'>
         <div>
-           <img className='w-36 rounded' src={userData.image} alt="" />
+           <img className='w-36 rounded' src={currentImage} alt="" />
           
         </div>         
         <div className='flex flex-col items-start gap-6 md:w2/4 text-sm text-gray-600'>
@@ -124,12 +173,54 @@ const MyProfile = () => {
                 <form onSubmit={handleSubmit} className='space-y-4' action="">
 
                   {/* Image Upload section */}
-                  <div>
-                    <img
-                      src={preview || userData.image}
-                      alt="Preview"
-                      className='w-28 h-28 rounded-full object-cover border mb-2' />
-                    <input type="file" accept='image/*' onChange={handleImageChange} className='text-sm' />
+                  <div className="flex flex-col items-center">
+                    {/* Hidden file input */}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleImageChange}
+                      id="photoInput"
+                      className="hidden"
+                    />
+
+                    {/* Clickable image */}
+                    <label htmlFor="photoInput" className="cursor-pointer relative group">
+                      <img
+                        src={currentImage}
+                        alt="Profile"
+                        className="w-28 h-28 rounded-full object-cover border border-gray-300 transition-opacity group-hover:opacity-70"
+                      />
+                      {/* Camera icon overlay */}
+                      <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-25 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-6 w-6 text-white"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M3 7h4l2-3h6l2 3h4a1 1 0 011 1v11a1 1 0 01-1 1H3a1 1 0 01-1-1V8a1 1 0 011-1zm9 3a4 4 0 100 8 4 4 0 000-8z"
+                          />
+                        </svg>
+                      </div>
+                    </label>
+
+                     {/* Remove button (only show if user uploaded a custom image) */}
+                     {(preview || (userData?.image && userData.image.trim() !== '')) && (
+                      <button
+                        type="button"
+                        onClick={handleRemovePhoto}
+                        className="mt-2 px-3 py-1 text-sm border border-gray-400 rounded hover:bg-gray-200"
+                      >
+                        Remove
+                      </button>
+                    )}
+
                   </div>
 
                   <div>
@@ -188,12 +279,12 @@ const MyProfile = () => {
                     <button
                       type='button'
                       onClick={() => setIsEdit(false)}
-                      className='px-4 py-2 bg-gray-300 rounded-md'>
+                      className='px-4 py-2 bg-gray-300 hover:bg-red-400 hover:text-gray-950 transition-all rounded-md'>
                         Cancel
                     </button>
                     <button
                       type='submit'
-                      className='px-4 py-2 bg-primary text-white rounded-md'>
+                      className='px-4 py-2cursor-pointer bg-blue-300 hover:bg-primary hover:text-white transition-all rounded-md'>
                       Save
                     </button>
                   </div>
