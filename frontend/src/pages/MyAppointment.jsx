@@ -4,10 +4,15 @@ import { useState } from 'react'
 import axios from 'axios'
 import { toast } from 'react-toastify'
 import { useEffect } from 'react'
+import OmisePaymentModal from '../components/OmisePaymentModal'
 
 const MyAppointment = () => {
 
-  const { backendUrl, token } = useContext(AppContext)
+  const [showPayment, setShowPayment] = useState(false);
+  const [selectedAppointment, setSelectedAppointment] = useState(null);
+  const [paymentAmount, setPaymentAmount] = useState(0);
+
+  const { backendUrl, token, getDoctorsData } = useContext(AppContext)
 
    //set date format from number to month name
   const [appointments, setAppointments] = useState([])
@@ -24,7 +29,6 @@ const MyAppointment = () => {
 
       if (data.success) {
         setAppointments(data.appointments.reverse()); //recent appointments will be on top
-        console.log(data.appointments);
       } else {
         toast.error("No appointments found.");
       }
@@ -36,11 +40,35 @@ const MyAppointment = () => {
 
   }
 
+  //call backend for cancelling appointment
+  const cancelAppointment = async (appointmentId) => {
+    try {
+      const { data } = await axios.post(backendUrl + '/api/user/cancel-appointment', { appointmentId }, { headers: { token } })
+      if (data.success) {
+        toast.success(data.message)
+        //update user appointments
+        getUserAppointments()
+        getDoctorsData()
+
+      } else {
+        toast.error(data.message)
+      }
+      
+
+    } catch (error) {
+      console.log(error);
+      toast.error(error.message)
+    }
+  }
+
+//call API for online payment
+
+
   useEffect(() => {
     if (token) {
       getUserAppointments()
     }
-   }, [token])
+   }, [ token ])
 
 
   return (
@@ -63,13 +91,32 @@ const MyAppointment = () => {
               </div>
               <div></div>
               <div className='flex flex-col gap-2 justify-end'>
-                <button className='text-sm text-stone-500 text-center sm:min-w-48 py-2 border rounded hover:bg-primary hover:text-white transition-all duration-300'>Pay Online</button>
-                <button className='text-sm text-stone-500 text-center sm:min-w-48 py-2 border rounded hover:bg-red-600 hover:text-white transition-all duration-300'>Cancel appointment</button>
+                {!item.cancelled && item.payment && <button className='sm:min-w-49 py-2 border rounded text-stone-500 bg-indigo-50'>Paid</button>}
+                {!item.cancelled && !item.payment && <button
+                    onClick={() => {
+                      setSelectedAppointment(item);
+                      setPaymentAmount(item.amount);
+                      setShowPayment(true);
+                    }}
+                    className="text-sm text-stone-500 text-center sm:min-w-48 py-2 border rounded hover:bg-primary hover:text-white transition-all duration-300"> Pay Online </button>}
+                {!item.cancelled && <button onClick={() => cancelAppointment(item._id)} className='text-sm text-stone-500 text-center sm:min-w-48 py-2 border rounded hover:bg-red-600 hover:text-white transition-all duration-300'>Cancel appointment</button>}
+                { item.cancelled && <button className='sm:min-w-48 py-2 border border-red-500 rounded text-red-500'>Appointment cancelled</button>}
               </div>
             </div>
           ))
         }
       </div>
+
+      {/* Payment modal */}
+      <OmisePaymentModal
+        show={showPayment}
+        onClose={() => setShowPayment(false)}
+        amount={paymentAmount}
+        appointmentId={selectedAppointment?._id}
+        jwtToken={token}
+        backendUrl={backendUrl}
+        onPaymentSuccess={getUserAppointments} 
+      />
     </div>
   )
 }
